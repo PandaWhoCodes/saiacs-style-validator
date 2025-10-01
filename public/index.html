@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAIACS Style Guide Validator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎓 SAIACS Style Guide Validator</h1>
+            <p class="subtitle">Validate your academic documents against the SAIACS Style Guide (2020-21)</p>
+        </header>
+
+        <main>
+            <section class="upload-section">
+                <div class="upload-card">
+                    <h2>Upload Your Document</h2>
+
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="documentType">Document Type:</label>
+                            <select id="documentType" name="documentType">
+                                <option value="assignment">Assignment / Research Paper</option>
+                                <option value="dissertation">MTh / PhD Dissertation</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fileInput" class="file-label">
+                                <span class="file-icon">📄</span>
+                                <span class="file-text">Choose DOCX file or drag and drop</span>
+                                <input type="file" id="fileInput" name="document" accept=".docx" required>
+                            </label>
+                            <div id="fileName" class="file-name"></div>
+                        </div>
+
+                        <button type="submit" class="btn-primary" id="validateBtn">
+                            <span class="btn-text">Validate Document</span>
+                            <span class="btn-spinner" style="display: none;">⏳ Validating...</span>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="info-card">
+                    <h3>📋 What Gets Validated</h3>
+                    <ul>
+                        <li><strong>Formatting:</strong> Font, margins, spacing, alignment</li>
+                        <li><strong>Citations:</strong> Footnotes, bibliography (Chicago style)</li>
+                        <li><strong>Structure:</strong> Headings, preliminary pages, organization</li>
+                        <li><strong>Quotations:</strong> Block quotes, quotation marks, citations</li>
+                        <li><strong>Style:</strong> Language usage, prohibited abbreviations</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="resultsSection" class="results-section" style="display: none;">
+                <div class="results-header">
+                    <h2>📊 Validation Results</h2>
+                    <button id="downloadReport" class="btn-secondary">Download Report</button>
+                </div>
+
+                <div id="summary" class="summary-card"></div>
+
+                <div class="issues-filters">
+                    <button class="filter-btn active" data-filter="all">All Issues</button>
+                    <button class="filter-btn" data-filter="critical">Critical</button>
+                    <button class="filter-btn" data-filter="high">High</button>
+                    <button class="filter-btn" data-filter="medium">Medium</button>
+                    <button class="filter-btn" data-filter="low">Low</button>
+                </div>
+
+                <div id="issuesList" class="issues-list"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Based on <strong>The SAIACS Style Guide for Research and Writing (2020-2021)</strong></p>
+            <p>Adapted from Chicago Manual of Style (17th ed.) and SBL Handbook of Style (2nd ed.)</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
