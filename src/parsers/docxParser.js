@@ -153,33 +153,46 @@ function extractParagraphFormatting(para) {
 
         // Get formatting from ALL runs, not just first
         const runs = para['w:r'] || [];
+        let hasExplicitFont = false;
+        let hasExplicitSize = false;
+
         runs.forEach(run => {
             const rPr = run['w:rPr']?.[0];
+
+            // Check if run has text content
+            const hasText = run['w:t'] && run['w:t'].length > 0;
+            if (!hasText) return; // Skip runs without text
+
             if (rPr) {
                 if (rPr['w:rFonts']) {
-                    const font = rPr['w:rFonts'][0].$?.['w:ascii'] || rPr['w:rFonts'][0].$?.['w:hAnsi'];
+                    // Check all font attributes
+                    const font = rPr['w:rFonts'][0].$?.['w:ascii'] ||
+                                rPr['w:rFonts'][0].$?.['w:hAnsi'] ||
+                                rPr['w:rFonts'][0].$?.['w:cs'] ||
+                                rPr['w:rFonts'][0].$?.['w:eastAsia'];
                     if (font && !formatting.fonts.includes(font)) {
                         formatting.fonts.push(font);
+                        hasExplicitFont = true;
                     }
                 }
                 if (rPr['w:sz']) {
                     const size = parseInt(rPr['w:sz'][0].$?.['w:val']) / 2; // Convert half-points to points
                     if (size && !formatting.fontSizes.includes(size)) {
                         formatting.fontSizes.push(size);
+                        hasExplicitSize = true;
                     }
                 }
                 if (rPr['w:b']) formatting.bold = true;
                 if (rPr['w:i']) formatting.italic = true;
+            } else if (hasText) {
+                // Run has text but no explicit formatting - mark as needing style inheritance
+                if (!hasExplicitFont) formatting.fonts.push('_inherit_');
+                if (!hasExplicitSize) formatting.fontSizes.push(0); // 0 indicates inheritance needed
             }
         });
 
-        // If no fonts found in runs, check default style
-        if (formatting.fonts.length === 0) {
-            formatting.fonts.push('Times New Roman'); // Default assumption
-        }
-        if (formatting.fontSizes.length === 0) {
-            formatting.fontSizes.push(12); // Default assumption
-        }
+        // Don't assume defaults - leave empty if no explicit formatting found
+        // This allows the validator to detect missing formatting
     } catch (error) {
         // Silent fail
     }
@@ -266,16 +279,26 @@ function extractHeadingLevel(styleId) {
 function extractQuotations(documentData, textContent) {
     const quotations = [];
 
-    // Find quoted text
-    const quotePattern = /"([^"]{100,})"/g;
+    // Find ALL quoted text, then check line count
+    const quotePattern = /"([^"]+)"/g;
     let match;
     while ((match = quotePattern.exec(textContent)) !== null) {
-        const lines = match[1].split('\n').length;
+        const quotedText = match[1];
+
+        // Count actual lines in the quote
+        const lines = quotedText.split('\n').length;
+
+        // Also estimate lines based on character count (avg 80 chars per line)
+        const estimatedLines = Math.ceil(quotedText.length / 80);
+
+        // Use the maximum of actual lines or estimated lines
+        const lineCount = Math.max(lines, estimatedLines);
+
         quotations.push({
-            text: match[1],
+            text: quotedText,
             start: match.index,
-            lines: lines,
-            needsBlockFormat: lines > 4
+            lines: lineCount,
+            needsBlockFormat: lineCount > 4
         });
     }
 

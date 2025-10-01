@@ -6,6 +6,7 @@ function validateCitations(documentData) {
     const issues = [];
     const footnotes = documentData.content.footnotes;
     const text = documentData.content.text;
+    const paragraphs = documentData.content.paragraphs;
 
     // Check for prohibited Latin abbreviations
     const prohibitedTerms = [
@@ -143,6 +144,60 @@ function validateCitations(documentData) {
             }
         }
     });
+
+    // 5. Check Bibliography Alphabetization
+    // Look for a bibliography section
+    const bibliographyStart = paragraphs.findIndex(para =>
+        /^(bibliography|references|works cited)/i.test(para.text.trim())
+    );
+
+    if (bibliographyStart !== -1) {
+        // Extract bibliography entries (typically entries that start with author names)
+        const bibliographyEntries = [];
+        for (let i = bibliographyStart + 1; i < paragraphs.length; i++) {
+            const para = paragraphs[i];
+            if (para.isEmpty) continue;
+
+            // Bibliography entries typically start with author surname
+            // and contain publication years
+            if (/^[A-Z][a-z]+/.test(para.text.trim()) &&
+                /\d{4}/.test(para.text)) {
+                bibliographyEntries.push({
+                    text: para.text.trim(),
+                    index: i + 1
+                });
+            }
+        }
+
+        // Check alphabetical order
+        if (bibliographyEntries.length > 1) {
+            let previousEntry = bibliographyEntries[0];
+            for (let i = 1; i < bibliographyEntries.length; i++) {
+                const currentEntry = bibliographyEntries[i];
+
+                // Extract surname (first word of entry)
+                const prevSurname = previousEntry.text.split(/[,\s]/)[0].toLowerCase();
+                const currSurname = currentEntry.text.split(/[,\s]/)[0].toLowerCase();
+
+                if (prevSurname > currSurname) {
+                    issues.push({
+                        category: 'Citations',
+                        severity: 'high',
+                        rule: 'Bibliography Order',
+                        message: `Bibliography entries not in alphabetical order`,
+                        expected: `"${currSurname}" should come before "${prevSurname}"`,
+                        found: `"${prevSurname}" appears before "${currSurname}"`,
+                        location: {
+                            paragraph: currentEntry.index,
+                            text: currentEntry.text.substring(0, 80) + (currentEntry.text.length > 80 ? '...' : '')
+                        },
+                        fix: 'Arrange bibliography entries alphabetically by author surname'
+                    });
+                }
+                previousEntry = currentEntry;
+            }
+        }
+    }
 
     return issues;
 }

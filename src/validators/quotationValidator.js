@@ -79,16 +79,21 @@ function validateQuotations(documentData) {
         }
 
         // Check for comma/period placement (should be outside quotes for UK English)
-        // Actually, SAIACS style says "outside full-stops and commas"
-        if (/,"|."/.test(para.text)) {
+        // SAIACS style says "Place outside full-stops and commas"
+        // This means: "text", and "text". (correct)   NOT: "text," and "text." (wrong)
+        if (/[.,]"/.test(para.text)) {
+            const textSnippet = para.text.substring(0, 80).trim();
             issues.push({
                 category: 'Quotations',
                 severity: 'medium',
                 rule: 'Punctuation Placement',
-                message: 'Place periods and commas outside quotation marks',
-                expected: '", or ".',
-                found: '," or ."',
-                location: { paragraph: idx + 1, text: para.text.substring(0, 100) },
+                message: 'Place periods and commas outside quotation marks (UK English style)',
+                expected: 'Punctuation after closing quote: "text", or "text".',
+                found: 'Punctuation before closing quote: "text," or "text."',
+                location: {
+                    paragraph: idx + 1,
+                    text: textSnippet + (para.text.length > 80 ? '...' : '')
+                },
                 fix: 'Move period/comma outside closing quote'
             });
         }
