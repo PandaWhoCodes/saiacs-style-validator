@@ -67,8 +67,13 @@ app.post('/api/validate', upload.single('document'), async (req, res) => {
     }
 });
 
+// Root route - serve the main page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Health check
-app.get('/api/health', (req, file, cb) => {
+app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'SAIACS Style Validator is running' });
 });
 
