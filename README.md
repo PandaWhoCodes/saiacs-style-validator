@@ -2,6 +2,16 @@
 
 A comprehensive web-based validator for academic documents written according to **The SAIACS Style Guide for Research and Writing (2020-2021)**. This tool automatically checks DOCX files for compliance with formatting, citation, structure, and style requirements.
 
+## 📸 Screenshots
+
+### Main Interface
+![SAIACS Style Guide Validator - Upload Interface](assets/upload-interface.png)
+*Upload your DOCX file and select document type (Assignment or Dissertation)*
+
+### Validation Results
+![SAIACS Style Guide Validator - Detailed Validation Results](assets/validation-results.png)
+*Get detailed validation results with severity levels, expected vs found values, and fix suggestions*
+
 ## 📋 Table of Contents
 
 - [Features](#features)
