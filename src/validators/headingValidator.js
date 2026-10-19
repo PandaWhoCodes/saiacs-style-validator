@@ -20,7 +20,7 @@ function validateHeadings(documentData, documentType) {
                 location: { section: 'Document Body' },
                 fix: 'Add decimal-numbered chapter and section headings'
             });
-        } else if (documentData.structure.bodyWordCount > 800) {
+        } else {
             // Look for unnumbered bold standalone lines in body
             const unnumberedBoldHeadings = paragraphs.filter(p =>
                 p.section === 'body' &&
@@ -30,20 +30,22 @@ function validateHeadings(documentData, documentType) {
                 !/^\d+\./.test(p.text.trim())
             );
 
-            issues.push({
-                category: 'Structure',
-                severity: 'medium',
-                rule: 'Section Headings (Section 2.3)',
-                message: 'Research paper does not use decimal outline section headings (e.g., "1. INTRODUCTION", "1.1 Sub-heading").',
-                expected: 'Decimal outline system: "1. SECTION HEADING", "1.1 Sub-heading of the First Degree"',
-                found: unnumberedBoldHeadings.length > 0
-                    ? `Unnumbered bold heading: "${unnumberedBoldHeadings[0].text.trim()}"`
-                    : 'No decimal-numbered section headings found',
-                location: unnumberedBoldHeadings.length > 0
-                    ? { paragraph: unnumberedBoldHeadings[0].index, text: unnumberedBoldHeadings[0].text.trim() }
-                    : { section: 'Document Body' },
-                fix: 'Divide the research paper into numbered sections using the decimal outline system (1. SECTION HEADING, 1.1 Sub-heading)'
-            });
+            if (unnumberedBoldHeadings.length > 0 || documentData.structure.bodyWordCount > 1500) {
+                issues.push({
+                    category: 'Structure',
+                    severity: 'medium',
+                    rule: 'Section Headings (Section 2.3)',
+                    message: 'Research paper does not use decimal outline section headings (e.g., "1. INTRODUCTION", "1.1 Sub-heading").',
+                    expected: 'Decimal outline system: "1. SECTION HEADING", "1.1 Sub-heading of the First Degree"',
+                    found: unnumberedBoldHeadings.length > 0
+                        ? `Unnumbered bold heading: "${unnumberedBoldHeadings[0].text.trim()}"`
+                        : 'No decimal-numbered section headings found',
+                    location: unnumberedBoldHeadings.length > 0
+                        ? { paragraph: unnumberedBoldHeadings[0].index, text: unnumberedBoldHeadings[0].text.trim() }
+                        : { section: 'Document Body' },
+                    fix: 'Divide the research paper into numbered sections using the decimal outline system (1. SECTION HEADING, 1.1 Sub-heading)'
+                });
+            }
         }
         return issues;
     }

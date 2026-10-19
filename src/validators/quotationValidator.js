@@ -99,6 +99,28 @@ function validateQuotations(documentData) {
             });
         }
 
+        // Also check if a footnote is placed at the very start of a paragraph before a word
+        const fnAtStartMatch = textWithFn.match(/^\s*\[FN:(\d+)\]\s*(\S+)/);
+        if (fnAtStartMatch) {
+            const fnId = fnAtStartMatch[1];
+            const wordAfter = fnAtStartMatch[2];
+            const localSnippet = textWithFn.substring(0, Math.min(textWithFn.length, 70)).replace(/\[FN:(\d+)\]/g, '[$1]').trim();
+            issues.push({
+                category: 'Quotations',
+                severity: 'high',
+                rule: 'Footnote Number Placement (Section 2.5.2)',
+                message: `In Paragraph ${idx}, Footnote ${fnId} is placed at the start of the paragraph before "${wordAfter}". Footnote numbers must be placed at the end of a clause or sentence immediately following punctuation.`,
+                expected: `Place [${fnId}] at the end of the cited sentence after the period`,
+                found: `[${fnId}]${wordAfter}`,
+                location: {
+                    paragraph: idx,
+                    footnote: fnId,
+                    text: localSnippet + (textWithFn.length > 70 ? '...' : '')
+                },
+                fix: `Move Footnote ${fnId} to the end of the relevant sentence after the punctuation mark`
+            });
+        }
+
         // 2b. Check for space before Footnote Number (Section 2.5.2)
         const spaceBeforeFnRegex = /(\S+)\s+\[FN:(\d+)\]/g;
         let spMatch;
@@ -143,26 +165,6 @@ function validateQuotations(documentData) {
                     text: snippet
                 },
                 fix: `Move the "${punct}" outside the closing quotation mark`
-            });
-        }
-
-        // 2d. Check Punctuation Placement with Quotation Marks (Section 2.5.1, p. 29)
-        // Check for periods/commas inside vs outside quotes (excluding parenthetical Scripture citations after quotes per Section 2.5.3)
-        const outsidePeriodCommaMatch = text.match(/[“"][^“”"]+[”"]([.,])(?!\s*\()/);
-        if (outsidePeriodCommaMatch) {
-            const fullMatch = outsidePeriodCommaMatch[0];
-            issues.push({
-                category: 'Quotations',
-                severity: 'low',
-                rule: 'Quotation Mark Punctuation (Section 2.5.1)',
-                message: `In Paragraph ${idx}, check punctuation placement at closing quote: ${fullMatch.slice(-25)}`,
-                expected: 'Consistent punctuation placement with closing quotation marks (see Section 2.5.1)',
-                found: fullMatch.slice(-25),
-                location: {
-                    paragraph: idx,
-                    text: snippet
-                },
-                fix: 'Ensure punctuation and closing quotation marks follow SAIACS Section 2.5.1 consistently'
             });
         }
 
