@@ -57,7 +57,7 @@ async function parseDocx(filePath) {
             .map(p => p.text)
             .join('\n');
 
-        const footnotes = extractFootnotes(footnotesData, styleMap);
+        const footnotes = extractFootnotes(footnotesData, styleMap, paragraphs);
         const headings = extractHeadings(paragraphs);
         const quotations = extractQuotations(paragraphs);
 
@@ -361,20 +361,23 @@ function extractParagraphDetails(para, styleMap, defaultFontSize = 12) {
         }
         const vertAlign = rPr?.['w:vertAlign']?.[0]?.$?.['w:val'] || null;
 
-        // Check for footnote references in this run
+        // Check for footnote references in this run (note: Google Docs DOCX exports start footnote IDs at w:id="0")
         if (run['w:footnoteReference']) {
             run['w:footnoteReference'].forEach(fnRef => {
                 const fnId = fnRef.$?.['w:id'];
-                if (fnId && fnId !== '0' && fnId !== '-1') {
+                if (fnId !== undefined && fnId !== null && String(fnId) !== '-1') {
+                    const rawXmlId = String(fnId);
                     footnoteRefs.push({
-                        id: fnId,
+                        id: rawXmlId,
+                        xmlId: rawXmlId,
                         offsetInText: text.length
                     });
-                    textWithFootnotes += `[FN:${fnId}]`;
+                    textWithFootnotes += `[FN:${rawXmlId}]`;
                     formatting.runs.push({
-                        text: `[FN:${fnId}]`,
+                        text: `[FN:${rawXmlId}]`,
                         isFootnoteRef: true,
-                        footnoteId: fnId,
+                        footnoteId: rawXmlId,
+                        xmlId: rawXmlId,
                         font,
                         fontSize: size,
                         bold: isBold,
@@ -527,10 +530,9 @@ function classifyParagraphSections(paragraphs) {
             continue;
         }
 
-        // Detect end-of-paper Student / AI / Academic Honesty Declaration section (after body)
+        // Detect end-of-paper Student / AI / Academic Honesty Declaration section (after body or bibliography)
         if (
             seenCoverEnd &&
-            currentSection !== 'bibliography' &&
             /^(student\s+declaration|declaration\s+of\s+academic\s+honesty|ai\s+usage\s+declaration)$/i.test(trimmed)
         ) {
             currentSection = 'declaration';
@@ -577,21 +579,51 @@ function classifyParagraphSections(paragraphs) {
 }
 
 /**
- * Extract footnotes from word/footnotes.xml
+ * Extract footnotes from word/footnotes.xml and normalize footnote numbering/ordering
+ * to match the 1-based sequential appearance of <w:footnoteReference> in word/document.xml
  */
-function extractFootnotes(footnotesData, styleMap) {
+function extractFootnotes(footnotesData, styleMap, paragraphs = []) {
     const footnotes = [];
     if (!footnotesData) return footnotes;
 
     try {
+        // 1. Collect the document-order sequence of footnote XML IDs from body paragraphs
+        const orderedXmlIds = [];
+        const referencedXmlIdSet = new Set();
+        paragraphs.forEach(p => {
+            (p.footnoteRefs || []).forEach(ref => {
+                const xid = String(ref.xmlId ?? ref.id);
+                if (!referencedXmlIdSet.has(xid)) {
+                    referencedXmlIdSet.add(xid);
+                    orderedXmlIds.push(xid);
+                }
+            });
+        });
+
+        // 2. Parse all non-separator footnote entries from word/footnotes.xml
+        const notesByXmlId = new Map();
         const notes = footnotesData['w:footnotes']?.['w:footnote'] || [];
         notes.forEach(note => {
-            const id = note.$?.['w:id'];
+            const rawId = note.$?.['w:id'];
             const type = note.$?.['w:type'];
-            if (id && id !== '-1' && id !== '0' && type !== 'separator' && type !== 'continuationSeparator') {
+            if (
+                rawId !== undefined &&
+                rawId !== null &&
+                String(rawId) !== '-1' &&
+                type !== 'separator' &&
+                type !== 'continuationSeparator' &&
+                type !== 'continuationNotice'
+            ) {
+                const xmlId = String(rawId);
                 const paras = note['w:p'] || [];
                 const paraDetails = paras.map(p => extractParagraphDetails(p, styleMap, 10));
                 const fullText = paraDetails.map(d => d.text).join(' ').replace(/\s+/g, ' ').trim();
+
+                // In MS Word, w:id="0" can be an untyped empty separator; in Google Docs, w:id="0" is the 1st footnote
+                if (xmlId === '0' && !fullText && !referencedXmlIdSet.has('0')) {
+                    return;
+                }
+
                 const primaryFormatting = paraDetails[0]?.formatting || {
                     alignment: null,
                     indentation: null,
@@ -601,13 +633,72 @@ function extractFootnotes(footnotesData, styleMap) {
                     runs: []
                 };
 
-                footnotes.push({
-                    id: String(id),
+                notesByXmlId.set(xmlId, {
+                    xmlId,
                     text: fullText,
                     formatting: primaryFormatting
                 });
             }
         });
+
+        // 3. Build 1-based sequential mapping in document reference order
+        const xmlIdToSeqId = new Map();
+        let seqCounter = 0;
+
+        orderedXmlIds.forEach(xmlId => {
+            if (notesByXmlId.has(xmlId) && !xmlIdToSeqId.has(xmlId)) {
+                seqCounter += 1;
+                const seqId = String(seqCounter);
+                xmlIdToSeqId.set(xmlId, seqId);
+                const noteObj = notesByXmlId.get(xmlId);
+                footnotes.push({
+                    id: seqId,
+                    xmlId,
+                    text: noteObj.text,
+                    formatting: noteObj.formatting
+                });
+            }
+        });
+
+        // Include any remaining non-empty footnotes not matched via orderedXmlIds
+        notesByXmlId.forEach((noteObj, xmlId) => {
+            if (!xmlIdToSeqId.has(xmlId) && noteObj.text) {
+                seqCounter += 1;
+                const seqId = String(seqCounter);
+                xmlIdToSeqId.set(xmlId, seqId);
+                footnotes.push({
+                    id: seqId,
+                    xmlId,
+                    text: noteObj.text,
+                    formatting: noteObj.formatting
+                });
+            }
+        });
+
+        // 4. Rewrite paragraph footnoteRefs, runs, and textWithFootnotes to use 1-based sequential IDs
+        if (xmlIdToSeqId.size > 0) {
+            paragraphs.forEach(p => {
+                if (!p.footnoteRefs || p.footnoteRefs.length === 0) return;
+                p.footnoteRefs.forEach(ref => {
+                    const xmlId = String(ref.xmlId ?? ref.id);
+                    if (xmlIdToSeqId.has(xmlId)) {
+                        ref.id = xmlIdToSeqId.get(xmlId);
+                    }
+                });
+                if (p.formatting?.runs) {
+                    p.formatting.runs.forEach(r => {
+                        if (r.isFootnoteRef) {
+                            const xmlId = String(r.xmlId ?? r.footnoteId);
+                            if (xmlIdToSeqId.has(xmlId)) {
+                                r.footnoteId = xmlIdToSeqId.get(xmlId);
+                                r.text = `[FN:${r.footnoteId}]`;
+                            }
+                        }
+                    });
+                    p.textWithFootnotes = p.formatting.runs.map(r => r.text).join('');
+                }
+            });
+        }
     } catch (error) {
         console.error('Error extracting footnotes:', error);
     }

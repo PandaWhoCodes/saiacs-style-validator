@@ -160,27 +160,29 @@ function validateCitations(documentData) {
         const hasParenPublication = /\([^)]*\d{4}[^)]*\)/.test(cleanText);
         const hasUrlOrDoi = /https?:\/\/|doi\.org/i.test(cleanText);
         const isOnlineOrMedia = /youtube|website|web\s+log|blog|podcast|interview|lecture|presentation/i.test(cleanText) || hasUrlOrDoi;
+        const hasPublicationYear = /\b(?:1[89]\d{2}|20\d{2}|n\.d\.)\b/i.test(cleanText);
+        const isFullCitation = hasParenPublication || hasUrlOrDoi || isOnlineOrMedia || hasPublicationYear;
         const commaParts = cleanText.split(',').map(s => s.trim()).filter(Boolean);
 
         // Extract likely author surname(s) from the first comma segment
-        const firstSegment = commaParts[0]?.replace(/\.$/, '') || '';
+        const firstSegment = commaParts[0]?.replace(/\.$/, '').trim() || '';
         const authorWords = firstSegment.split(/\s+/).filter(Boolean);
         const lastWordSurname = authorWords[authorWords.length - 1]?.replace(/[^A-Za-z'-]/g, '').toLowerCase() || '';
 
         // 1d. Author-only footnote check (e.g. "Delbert Royce Burkett.")
-        if (commaParts.length === 1 && !hasParenPublication && !hasUrlOrDoi) {
+        if (commaParts.length === 1 && !isFullCitation) {
             issues.push({
                 category: 'Citations',
                 severity: 'high',
                 rule: 'Incomplete Shortened Footnote (Section 2.i)',
-                message: `Footnote ${footnote.id} contains only "${cleanText}". Subsequent footnotes must include the author's surname, a shortened form of the title, and the page number(s).`,
+                message: `Footnote ${footnote.id} contains only "${cleanText}". Subsequent footnotes must include the author's surname and a shortened form of the title.`,
                 expected: 'Surname, Shortened Title, page (e.g., Burkett, Introduction to the New Testament, 45.)',
                 found: cleanText,
                 location: {
                     footnote: footnote.id,
                     text: textSnippet
                 },
-                fix: 'Use surname only, add the shortened work title, and include the cited page number'
+                fix: 'Use surname only and add the shortened work title'
             });
             return;
         }
@@ -192,7 +194,7 @@ function validateCitations(documentData) {
             const isJournalIssue = /^\s*(?:january|february|march|april|may|june|july|august|september|october|november|december|spring|summer|autumn|fall|winter|\d{4})\b/i.test(pubInside);
             const isThesisOrLecture = /thesis|diss\.|lecture|presentation|paper\s+presented/i.test(pubInside);
 
-            if (!isJournalIssue && !isThesisOrLecture && !pubInside.includes(':')) {
+            if (!isJournalIssue && !isThesisOrLecture && !isOnlineOrMedia && !pubInside.includes(':')) {
                 issues.push({
                     category: 'Citations',
                     severity: 'high',
@@ -210,14 +212,20 @@ function validateCitations(documentData) {
         }
 
         // 1f. Check if first citation of an author was given in shortened form instead of full form (Section 2.i)
-        const isShortenedNote = !hasParenPublication && !hasUrlOrDoi && commaParts.length <= 3;
-        if (hasParenPublication || hasUrlOrDoi) {
-            // Record all surnames mentioned in the author segment
+        const isShortenedNote = !isFullCitation && commaParts.length <= 3;
+        if (isFullCitation) {
+            // Record all surnames and full names mentioned in the author segment
             firstSegment
                 .split(/\band\b|,/i)
-                .map(part => part.trim().split(/\s+/).pop()?.replace(/[^A-Za-z'-]/g, '').toLowerCase())
+                .map(part => part.trim())
                 .filter(Boolean)
-                .forEach(s => seenAuthorSurnames.add(s));
+                .forEach(part => {
+                    const surname = part.split(/\s+/).pop()?.replace(/[^A-Za-z'-]/g, '').toLowerCase();
+                    if (surname) seenAuthorSurnames.add(surname);
+                    if (part.split(/\s+/).length >= 2) {
+                        seenAuthorSurnames.add(`full:${part.toLowerCase()}`);
+                    }
+                });
         } else if (isShortenedNote && lastWordSurname) {
             if (!seenAuthorSurnames.has(lastWordSurname)) {
                 issues.push({
@@ -234,31 +242,27 @@ function validateCitations(documentData) {
                     fix: 'Provide full publication details in the first footnote for this source'
                 });
                 seenAuthorSurnames.add(lastWordSurname);
+            } else if (
+                authorWords.length >= 2 &&
+                seenAuthorSurnames.has(`full:${firstSegment.toLowerCase()}`) &&
+                !/\band\b/i.test(firstSegment) &&
+                !/society|church|institute|committee|association|council|ministry|press|university|board|organization/i.test(firstSegment)
+            ) {
+                const expectedSurname = authorWords[authorWords.length - 1];
+                issues.push({
+                    category: 'Citations',
+                    severity: 'medium',
+                    rule: 'Shortened Footnote Author Format (Section 2.i)',
+                    message: `Footnote ${footnote.id} uses the author's full name ("${firstSegment}") in a shortened citation. Subsequent footnotes should use only the author's last name ("${expectedSurname}").`,
+                    expected: `${expectedSurname}, ${commaParts.slice(1).join(', ')}`,
+                    found: cleanText,
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: `Replace "${firstSegment}" with "${expectedSurname}" in the shortened footnote`
+                });
             }
-        }
-
-        // 1g. Check for missing page number at the end of the footnote (Section 2.i & 3.1)
-        const endsWithPageOrLocator =
-            /(?:,\s*|\:\s*)(?:[ivxlcdm]+|\d+(?:[–-]\d+)?(?:\s*,\s*\d+(?:[–-]\d+)?)*|(?:chap\.|ch\.|sec\.|doc\.|s\.v\.)\s*[^.]+)\.?$/i.test(cleanText) &&
-            !/\(\d{4}\)\.?$/.test(cleanText) &&
-            !/,\s*(?:1[89]\d{2}|20\d{2})\)\.?$/.test(cleanText);
-
-        if (!endsWithPageOrLocator && !isOnlineOrMedia) {
-            issues.push({
-                category: 'Citations',
-                severity: 'high',
-                rule: 'Missing Page Number in Footnote (Section 2.i)',
-                message: `Footnote ${footnote.id} is missing the specific page number(s) (or locator such as chap./s.v.) at the end of the citation.`,
-                expected: hasParenPublication
-                    ? `${cleanText.replace(/\.$/, '')}, [page].`
-                    : `${cleanText.replace(/\.$/, '')}, [page].`,
-                found: cleanText,
-                location: {
-                    footnote: footnote.id,
-                    text: textSnippet
-                },
-                fix: 'Add the cited page number(s) after the publication details or shortened title'
-            });
         }
     });
 
