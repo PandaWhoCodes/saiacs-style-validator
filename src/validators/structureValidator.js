@@ -1,193 +1,200 @@
 /**
- * Validate document structure according to SAIACS Style Guide
+ * Validate document structure and preliminary pages according to SAIACS Style Guide (Sections 1.2, 2.1, 2.2, Appendices 1 & 2)
  */
 
 function validateStructure(documentData, documentType) {
     const issues = [];
     const text = documentData.content.text;
+    const paragraphs = documentData.content.paragraphs;
     const structure = documentData.structure;
 
-    // Check for required preliminary pages based on document type
-    if (documentType === 'assignment') {
-        // Assignment requirements
+    const coverParagraphs = paragraphs.filter(p => p.section === 'cover' && !p.isEmpty);
+    const coverText = coverParagraphs.map(p => p.text).join('\n') || text.substring(0, 1500);
 
-        // Check for proper cover page elements
+    // 1. Validate Preliminary Pages by Document Type
+    if (documentType === 'assignment') {
         const requiredCoverElements = [
-            { pattern: /SOUTH ASIA INSTITUTE OF ADVANCED CHRISTIAN STUDIES/i, name: 'SAIACS header' },
+            { pattern: /SOUTH\s+ASIA\s+INSTITUTE\s+OF\s+ADVANCED\s+CHRISTIAN\s+STUDIES/i, name: 'SAIACS institution header' },
             { pattern: /submitted\s+to/i, name: '"Submitted to"' },
-            { pattern: /partial\s+fulfillment/i, name: '"In Partial Fulfillment"' },
+            { pattern: /partial\s+fulfil+ment/i, name: '"in partial fulfilment of the requirements..."' },
             { pattern: /due\s+date/i, name: 'Due Date' },
-            { pattern: /expected\s+(time|word)/i, name: 'Expected Time/Word Count' },
-            { pattern: /actual\s+(time|word)/i, name: 'Actual Time/Word Count' }
+            { pattern: /date\s+submitted/i, name: 'Date Submitted' },
+            { pattern: /expected\s+time/i, name: 'Expected Time' },
+            { pattern: /actual\s+time/i, name: 'Actual Time' },
+            { pattern: /expected\s+word\s+count/i, name: 'Expected Word count' },
+            { pattern: /actual\s+word\s+count/i, name: 'Actual Word Count' }
         ];
 
         requiredCoverElements.forEach(({ pattern, name }) => {
-            if (!pattern.test(text)) {
+            if (!pattern.test(coverText)) {
                 issues.push({
                     category: 'Structure',
                     severity: 'high',
-                    rule: 'Cover Page Format',
-                    message: `Cover page must include ${name}`,
+                    rule: 'Assignment Cover Page (Appendix 1)',
+                    message: `Cover page is missing ${name}.`,
                     expected: `${name} on cover page`,
                     found: `${name} not found`,
                     location: { section: 'Cover Page' },
-                    fix: `Add ${name} to cover page as per sample format`
+                    fix: `Add ${name} to the cover page following Appendix 1 (p. 32)`
                 });
             }
         });
 
-        // Check for academic honesty declaration (should be ON cover page)
-        if (!/(I\s+)?declare\s+that\s+this\s+assignment\s+is\s+(my|our)\s+own\s+unaided\s+work/i.test(text)) {
+        // Check for Academic Honesty Declaration
+        if (!/declare\s+that\s+this\s+assignment\s+is\s+(my|our)\s+own\s+unaided\s+work/i.test(text)) {
             issues.push({
                 category: 'Structure',
                 severity: 'critical',
-                rule: 'Academic Honesty Declaration',
-                message: 'Cover page must include academic honesty declaration',
-                expected: 'Declaration: "I declare that this assignment is my own unaided work. I have not copied it from any person, article, book, website or other form of storage. Every idea or phrase that is not my own has been duly acknowledged."',
-                found: 'No declaration found',
-                location: { section: 'Cover Page (bottom section)' },
-                fix: 'Add required declaration on cover page above signature line'
+                rule: 'Academic Honesty Declaration (Section 1.2.1 & Appendix 1)',
+                message: 'Assignment must include the Academic Honesty declaration.',
+                expected: '"I declare that this assignment is my own unaided work. I have not copied it from any person, article, book, website or other form of storage. Every idea or phrase that is not my own has been duly acknowledged."',
+                found: 'No academic honesty declaration found',
+                location: { section: 'Cover Page / End of Assignment' },
+                fix: 'Add the required Academic Honesty declaration paragraph'
             });
+        } else {
+            // Check for the common "is no my own" typo
+            const typoPara = paragraphs.find(p => /phrase\s+that\s+is\s+no\s+my\s+own/i.test(p.text));
+            if (typoPara) {
+                issues.push({
+                    category: 'Structure',
+                    severity: 'low',
+                    rule: 'Declaration Wording (Section 1.2.1)',
+                    message: `Academic honesty declaration in Paragraph ${typoPara.index} contains a typo ("is no my own" instead of "is not my own").`,
+                    expected: '"Every idea or phrase that is not my own has been duly acknowledged."',
+                    found: '"...Every idea or phrase that is no my own..."',
+                    location: {
+                        paragraph: typoPara.index,
+                        text: typoPara.text.trim()
+                    },
+                    fix: 'Change "no my own" to "not my own"'
+                });
+            }
         }
 
-        // Check for signature line
-        if (!/signature\s*:/i.test(text)) {
+        // Check for Signature line
+        if (!/signature\s*:/i.test(coverText)) {
             issues.push({
                 category: 'Structure',
                 severity: 'medium',
-                rule: 'Cover Page Format',
-                message: 'Cover page should include signature line',
+                rule: 'Assignment Cover Page (Appendix 1)',
+                message: 'Cover page should include a Signature line.',
                 expected: 'Signature: _________________',
                 found: 'No signature line found',
                 location: { section: 'Cover Page' },
-                fix: 'Add "Signature: _________________" after declaration'
+                fix: 'Add "Signature: _________________" on the cover page'
+            });
+        }
+
+        // Check for Registration / Admission number
+        if (!/(registration|admission)\s*(#|no\.?|number)/i.test(coverText)) {
+            issues.push({
+                category: 'Structure',
+                severity: 'low',
+                rule: 'Assignment Cover Page (Appendix 1)',
+                message: 'Cover page should include your Registration # (e.g., "Registration #2091").',
+                expected: 'Registration #[number]',
+                found: 'No Registration # found',
+                location: { section: 'Cover Page' },
+                fix: 'Add your Registration # below your name on the cover page'
             });
         }
 
     } else if (documentType === 'dissertation') {
-        // Dissertation requirements
-
-        // Check for Table of Contents
         if (!structure.hasTableOfContents) {
             issues.push({
                 category: 'Structure',
                 severity: 'high',
-                rule: 'Table of Contents',
-                message: 'Dissertation must include Table of Contents',
+                rule: 'Table of Contents (Section 2.2)',
+                message: 'Dissertation must include a Table of Contents.',
                 expected: 'Table of Contents after Declaration page',
                 found: 'No Table of Contents found',
-                location: { section: 'Preliminary pages' },
-                fix: 'Add Table of Contents'
+                location: { section: 'Preliminary Pages' },
+                fix: 'Add a Table of Contents page in the preliminary pages (Appendix 2)'
             });
         }
 
-        // Check for Declaration page
-        if (!/(declaration|hereby declare)/i.test(text)) {
+        if (!/(declaration|hereby\s+declare)/i.test(text)) {
             issues.push({
                 category: 'Structure',
                 severity: 'high',
-                rule: 'Declaration Page',
-                message: 'Dissertation must include Declaration page',
-                expected: 'Declaration page with required statements',
+                rule: 'Declaration Page (Appendix 2)',
+                message: 'Dissertation must include the signed Declaration page.',
+                expected: 'Declaration page with the 3 required statements (Appendix 2, p. 35)',
                 found: 'No Declaration page found',
-                location: { section: 'Preliminary pages' },
-                fix: 'Add Declaration page after Signatory page'
+                location: { section: 'Preliminary Pages' },
+                fix: 'Add the Declaration page after the Signatory page'
             });
         }
 
-        // Check for proper chapter structure (should have multiple chapters)
-        const chapterHeadings = documentData.content.headings.filter(h =>
-            h.level === 1 && /chapter|introduction|conclusion/i.test(h.text)
-        );
-
+        const chapterHeadings = documentData.content.headings.filter(h => h.level === 1);
         if (chapterHeadings.length < 3) {
             issues.push({
                 category: 'Structure',
                 severity: 'medium',
-                rule: 'Chapter Structure',
-                message: 'Dissertation should have at least Introduction + body chapters + Conclusion',
-                expected: 'Minimum 3 chapters',
-                found: `${chapterHeadings.length} chapters detected`,
-                location: { section: 'Document structure' },
-                fix: 'Ensure proper chapter division'
+                rule: 'Dissertation Chapter Structure (Section 2.2)',
+                message: 'Dissertation should include an Introductory Chapter, main study chapters, and a Summary Chapter.',
+                expected: 'At least 3 Level-1 chapter headings',
+                found: `${chapterHeadings.length} Level-1 chapter headings detected`,
+                location: { section: 'Document Structure' },
+                fix: 'Ensure all chapters use Level 1 headings (e.g., "1. CHAPTER ONE HEADING")'
             });
         }
     }
 
-    // Check for Bibliography (required for both types with substantial content)
-    if (!structure.hasBibliography && structure.wordCount > 1500) {
-        issues.push({
-            category: 'Structure',
-            severity: 'high',
-            rule: 'Bibliography',
-            message: 'Document must include Bibliography section',
-            expected: 'Bibliography at end of document',
-            found: 'No Bibliography section found',
-            location: { section: 'End of document' },
-            fix: 'Add Bibliography section at the end'
-        });
-    }
-
-    // Check for proper pagination structure
-    // Preliminary pages should have Roman numerals, main text should have Arabic
-    // This would require deeper analysis of the page numbering
-
-    // Check for line spacing between paragraphs
-    let consecutiveNonEmptyParas = 0;
-    documentData.content.paragraphs.forEach((para, idx) => {
-        if (!para.isEmpty) {
-            consecutiveNonEmptyParas++;
-            if (consecutiveNonEmptyParas > 1) {
-                // Check if there's proper spacing between paragraphs
-                // This is simplified - would need actual paragraph spacing data
-            }
-        } else {
-            consecutiveNonEmptyParas = 0;
+    // 2. Check for Impossible Calendar Dates (e.g. "Sep 31, 2025" or "31-Sep-2025")
+    const thirtyDayMonths = /(?:(?:\b(?:sep|sept|september|apr|april|jun|june|nov|november)\b\.?\s+31\b)|(?:\b31[\s/-](?:sep|sept|september|apr|april|jun|june|nov|november)\b)|(?:\b(?:feb|february)\b\.?\s+(?:30|31)\b)|(?:\b(?:30|31)[\s/-](?:feb|february)\b))/i;
+    paragraphs.forEach(para => {
+        if (para.isEmpty) return;
+        const m = para.text.match(thirtyDayMonths);
+        if (m) {
+            issues.push({
+                category: 'Structure',
+                severity: 'low',
+                rule: 'Invalid Date on Cover/Declaration',
+                message: `Paragraph ${para.index} contains a non-existent calendar date ("${m[0]}").`,
+                expected: 'Valid calendar date (e.g., Sep 30, 2025)',
+                found: m[0],
+                location: {
+                    paragraph: para.index,
+                    text: para.text.trim()
+                },
+                fix: `Correct the date "${m[0]}"`
+            });
         }
     });
 
-    // Check for proper section organization
-    // Introduction should come before main content
-    const introIndex = text.toLowerCase().indexOf('introduction');
-    const biblioIndex = text.toLowerCase().indexOf('bibliography');
-
-    if (introIndex > 1000) { // If introduction appears late in document
+    // 3. Validate Bibliography Presence and Ordering (Sections 2.1 & 2.2)
+    const bibHeaderPara = paragraphs.find(p => p.section === 'bibliographyHeader');
+    if (!bibHeaderPara && structure.wordCount > 500) {
         issues.push({
             category: 'Structure',
-            severity: 'low',
-            rule: 'Document Organization',
-            message: 'Introduction should appear at the beginning of the document',
-            expected: 'Introduction as first section',
-            found: 'Introduction appears later in document',
-            location: { section: 'Document structure' }
+            severity: 'high',
+            rule: 'Bibliography Section (Section 2.1)',
+            message: 'Document must include a Bibliography section at the end.',
+            expected: 'Bibliography section at end of document',
+            found: 'No Bibliography section found',
+            location: { section: 'End of Document' },
+            fix: 'Add a "Bibliography" section at the end of the paper'
         });
-    }
-
-    if (biblioIndex !== -1 && biblioIndex < text.length - 1000) {
-        issues.push({
-            category: 'Structure',
-            severity: 'medium',
-            rule: 'Bibliography Placement',
-            message: 'Bibliography should be at the end of the document',
-            expected: 'Bibliography as final section',
-            found: 'Bibliography appears before end',
-            location: { section: 'Bibliography' }
-        });
-    }
-
-    // Check for appendices (if present, should be before bibliography)
-    const appendixIndex = text.toLowerCase().indexOf('appendix');
-    if (appendixIndex !== -1 && biblioIndex !== -1 && appendixIndex > biblioIndex) {
-        issues.push({
-            category: 'Structure',
-            severity: 'medium',
-            rule: 'Appendix Placement',
-            message: 'Appendices should come before Bibliography',
-            expected: 'Order: Main text → Appendices → Bibliography',
-            found: 'Appendix appears after Bibliography',
-            location: { section: 'End matter' },
-            fix: 'Move appendices before Bibliography'
-        });
+    } else if (bibHeaderPara) {
+        // Check that no body or appendix paragraphs appear after the Bibliography
+        const appendixPara = paragraphs.find(p => p.section === 'appendix');
+        if (appendixPara && appendixPara.index > bibHeaderPara.index) {
+            issues.push({
+                category: 'Structure',
+                severity: 'medium',
+                rule: 'Appendix Placement (Section 2.1)',
+                message: 'Appendices must be placed before the Bibliography.',
+                expected: 'Main Text → Appendices → Bibliography',
+                found: 'Appendix appears after Bibliography',
+                location: {
+                    paragraph: appendixPara.index,
+                    text: appendixPara.text.trim()
+                },
+                fix: 'Move the Appendix section before the Bibliography'
+            });
+        }
     }
 
     return issues;

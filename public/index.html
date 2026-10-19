@@ -46,11 +46,11 @@
                 <div class="info-card">
                     <h3>📋 What Gets Validated</h3>
                     <ul>
-                        <li><strong>Formatting:</strong> Font, margins, spacing, alignment</li>
-                        <li><strong>Citations:</strong> Footnotes, bibliography (Chicago style)</li>
-                        <li><strong>Structure:</strong> Headings, preliminary pages, organization</li>
-                        <li><strong>Quotations:</strong> Block quotes, quotation marks, citations</li>
-                        <li><strong>Style:</strong> Language usage, prohibited abbreviations</li>
+                        <li><strong>Formatting:</strong> Font (12pt/11pt/10pt), margins, 1.5/1.0 spacing, hanging indent, dashes</li>
+                        <li><strong>Citations:</strong> CMS 17th notes &amp; bibliography, city of publication, page numbers, no Latin terms</li>
+                        <li><strong>Structure:</strong> Decimal headings (1., 1.1, 1.1.1), cover page, declaration, organization</li>
+                        <li><strong>Quotations:</strong> Footnote placement after punctuation, block quotes (&gt;4 lines), quote marks</li>
+                        <li><strong>Biblical &amp; SBL Style:</strong> Parenthetical Bible abbreviations, BCE/CE, AWA</li>
                     </ul>
                 </div>
             </section>
@@ -64,11 +64,19 @@
                 <div id="summary" class="summary-card"></div>
 
                 <div class="issues-filters">
-                    <button class="filter-btn active" data-filter="all">All Issues</button>
+                    <button class="filter-btn active" data-filter="all">All Severities</button>
                     <button class="filter-btn" data-filter="critical">Critical</button>
                     <button class="filter-btn" data-filter="high">High</button>
                     <button class="filter-btn" data-filter="medium">Medium</button>
                     <button class="filter-btn" data-filter="low">Low</button>
+                </div>
+
+                <div class="issues-filters category-filters" style="margin-top: -10px;">
+                    <button class="cat-filter-btn filter-btn active" data-category="all">All Categories</button>
+                    <button class="cat-filter-btn filter-btn" data-category="Formatting">Formatting</button>
+                    <button class="cat-filter-btn filter-btn" data-category="Citations">Citations</button>
+                    <button class="cat-filter-btn filter-btn" data-category="Quotations">Quotations</button>
+                    <button class="cat-filter-btn filter-btn" data-category="Structure">Structure</button>
                 </div>
 
                 <div id="issuesList" class="issues-list"></div>

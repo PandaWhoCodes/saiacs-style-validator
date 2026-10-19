@@ -1,12 +1,11 @@
 /**
- * Validate formatting according to SAIACS Style Guide
- * Rules: Font, margins, spacing, alignment, etc.
+ * Validate formatting according to SAIACS Style Guide (2020-2021)
+ * Rules: Font, font size, margins, line spacing, alignment, indentation, bibliography hanging indent, dashes/hyphens, pagination
  */
 
 function validateFormatting(documentData, documentType) {
     const issues = [];
 
-    // Expected values based on document type
     const expectedFont = 'Times New Roman';
     const expectedFontSize = 12;
     const expectedSpacing = 1.5;
@@ -14,52 +13,22 @@ function validateFormatting(documentData, documentType) {
         ? { top: 1, bottom: 1, left: 1.5, right: 1 }
         : { top: 1, bottom: 1, left: 1, right: 1 };
 
-    // 1. Validate Font
-    const { fonts, fontSizes } = documentData.formatting.font;
-
-    if (!fonts.includes(expectedFont)) {
+    // 1. Validate Document-Level Font
+    const { fonts } = documentData.formatting.font;
+    if (fonts.length > 0 && !fonts.includes(expectedFont)) {
         issues.push({
             category: 'Formatting',
             severity: 'critical',
-            rule: 'Font Style',
-            message: `Font must be "${expectedFont}". Found: ${fonts.join(', ') || 'Unknown'}`,
+            rule: 'Font Style (Section 1.1.1)',
+            message: `Document font must be "${expectedFont}". Found: ${fonts.join(', ')}`,
             expected: expectedFont,
-            found: fonts.join(', ') || 'Unknown',
+            found: fonts.join(', '),
             location: { section: 'Document' },
             fix: `Change all text to ${expectedFont}`
         });
     }
 
-    // Check for multiple fonts (should be consistent)
-    if (fonts.length > 2) { // Allow for one alternate (e.g., for code or special text)
-        issues.push({
-            category: 'Formatting',
-            severity: 'medium',
-            rule: 'Font Consistency',
-            message: `Multiple fonts used: ${fonts.join(', ')}. Should use primarily "${expectedFont}"`,
-            expected: `Primarily ${expectedFont}`,
-            found: `${fonts.length} different fonts`,
-            location: { section: 'Document' }
-        });
-    }
-
-    // 2. Validate Font Size
-    const mainFontSizes = fontSizes.filter(size => size >= 10 && size <= 13);
-
-    if (!mainFontSizes.includes(expectedFontSize)) {
-        issues.push({
-            category: 'Formatting',
-            severity: 'critical',
-            rule: 'Font Size',
-            message: `Main text must be ${expectedFontSize}pt. Found: ${mainFontSizes.join(', ') || 'Unknown'}`,
-            expected: `${expectedFontSize}pt`,
-            found: `${mainFontSizes.join(', ') || 'Unknown'}pt`,
-            location: { section: 'Document' },
-            fix: `Change main text to ${expectedFontSize}pt`
-        });
-    }
-
-    // 3. Validate Margins
+    // 2. Validate Page Margins (Section 1.1.1 & 1.1.2)
     if (documentData.formatting.margins) {
         const margins = documentData.formatting.margins;
 
@@ -67,12 +36,12 @@ function validateFormatting(documentData, documentType) {
             const expected = expectedMargins[side];
             const actual = margins[side];
 
-            if (actual && Math.abs(actual - expected) > 0.1) { // Allow 0.1 inch tolerance
+            if (actual !== undefined && actual !== null && Math.abs(actual - expected) > 0.1) {
                 issues.push({
                     category: 'Formatting',
                     severity: 'critical',
-                    rule: 'Page Margins',
-                    message: `${side.charAt(0).toUpperCase() + side.slice(1)} margin must be ${expected}" (found ${actual}")`,
+                    rule: 'Page Margins (Section 1.1)',
+                    message: `${side.charAt(0).toUpperCase() + side.slice(1)} margin must be ${expected}" for a ${documentType} (found ${actual}")`,
                     expected: `${expected}"`,
                     found: `${actual}"`,
                     location: { section: 'Page Setup' },
@@ -82,359 +51,355 @@ function validateFormatting(documentData, documentType) {
         });
     }
 
-    // 4. Validate Line Spacing
-    const spacings = documentData.formatting.spacing;
-
-    if (spacings.length > 0) {
-        const mainSpacing = Math.round(spacings[0] * 10) / 10; // Round to 1 decimal
-
-        if (Math.abs(mainSpacing - expectedSpacing) > 0.2) {
-            issues.push({
-                category: 'Formatting',
-                severity: 'high',
-                rule: 'Line Spacing',
-                message: `Main text spacing must be ${expectedSpacing} (found ${mainSpacing})`,
-                expected: expectedSpacing.toString(),
-                found: mainSpacing.toString(),
-                location: { section: 'Document' },
-                fix: `Set line spacing to ${expectedSpacing}`
-            });
-        }
-    }
-
-    // 5. Validate Paragraph Formatting
+    // 3. Validate Paragraphs by Section (Body, Bibliography, Cover)
     const paragraphs = documentData.content.paragraphs;
-    let indentedParasCount = 0;
-    let firstFontIssue = true;
-    let firstSizeIssue = true;
+    let firstLineIndentReported = false;
+    let bibSpacingReported = false;
+    let bibHangingIndentReported = false;
 
-    paragraphs.forEach((para, idx) => {
+    paragraphs.forEach((para) => {
         if (para.isEmpty) return;
 
-        // Check if this is likely a footnote or bibliography entry (skip size check for these)
-        const isFootnoteOrBibliography =
-            para.text.includes('Ibid') ||
-            para.text.includes('et al') ||
-            /^\d+\.\s/.test(para.text) || // Starts with number and period (footnote)
-            /\d{4}\.$/.test(para.text.trim()) || // Ends with year and period
-            /\w+,\s+\w+\..*\d{4}/.test(para.text) || // Author citation pattern
-            para.text.includes('Press,') ||
-            para.text.includes('Publishers') ||
-            para.text.includes('Publishing') ||
-            para.text.includes('University Press') ||
-            para.text.includes('Vol.') ||
-            para.text.includes('Volume') ||
-            para.text.includes('pp.') ||
-            para.text.includes('eds.') ||
-            para.text.includes('trans.');
+        const idx = para.index;
+        const section = para.section;
+        const textTrimmed = para.text.trim();
+        const textSnippet = textTrimmed.substring(0, 90) + (textTrimmed.length > 90 ? '...' : '');
 
-        // Check fonts in this paragraph
-        if (para.formatting.fonts) {
-            // Check for missing font formatting
-            if (para.formatting.fonts.length === 0 || para.formatting.fonts.includes('_inherit_')) {
-                const textSnippet = para.text.substring(0, 80).trim();
+        // Skip formatting checks on the Generative AI declaration form if present
+        if (section === 'declaration') return;
+
+        // Check if this is an indented block quotation in the body
+        const leftIndent = parseInt(para.formatting.indentation?.['w:left'] || '0', 10);
+        const hangingIndent = parseInt(para.formatting.indentation?.['w:hanging'] || '0', 10);
+        const isBlockQuote = section === 'body' && leftIndent >= 500 && hangingIndent === 0 && textTrimmed.length > 100;
+
+        // 3a. Font family check per paragraph
+        if (para.formatting.fonts && para.formatting.fonts.length > 0) {
+            const wrongFonts = para.formatting.fonts.filter(font =>
+                font !== expectedFont &&
+                font !== 'Symbol' &&
+                font !== '_inherit_' &&
+                !/sbl|gentium|galatia|ezra|cardinal/i.test(font) // Allow standard Unicode Greek/Hebrew fonts (Section 1.5)
+            );
+
+            if (wrongFonts.length > 0) {
                 issues.push({
                     category: 'Formatting',
                     severity: 'critical',
-                    rule: 'Font Style',
-                    message: `Paragraph ${idx + 1} has text without explicit font formatting. Must be "${expectedFont}"`,
+                    rule: 'Font Style (Section 1.1.1)',
+                    message: `Paragraph ${idx} uses incorrect font: ${wrongFonts.join(', ')}. Must be "${expectedFont}".`,
                     expected: expectedFont,
-                    found: 'No explicit font',
+                    found: wrongFonts.join(', '),
                     location: {
-                        paragraph: idx + 1,
-                        text: textSnippet + (para.text.length > 80 ? '...' : '')
+                        paragraph: idx,
+                        text: textSnippet
                     },
-                    fix: `Apply ${expectedFont} to all text`
+                    fix: `Change font to ${expectedFont}`
                 });
-            } else {
-                const wrongFonts = para.formatting.fonts.filter(font =>
-                    font !== expectedFont && font !== 'Symbol' && font !== 'Courier New' && font !== '_inherit_'
-                );
-
-                if (wrongFonts.length > 0) {
-                    const textSnippet = para.text.substring(0, 80).trim();
-                    issues.push({
-                        category: 'Formatting',
-                        severity: 'critical',
-                        rule: 'Font Style',
-                        message: `Paragraph ${idx + 1} uses incorrect font: ${wrongFonts.join(', ')}. Must be "${expectedFont}"`,
-                        expected: expectedFont,
-                        found: wrongFonts.join(', '),
-                        location: {
-                            paragraph: idx + 1,
-                            text: textSnippet + (para.text.length > 80 ? '...' : '')
-                        },
-                        fix: `Change text to ${expectedFont}`
-                    });
-                }
             }
         }
 
-        // Check font sizes in this paragraph
-        if (para.formatting.fontSizes && !isFootnoteOrBibliography) {
-            // Check for missing size formatting (0 indicates inheritance needed)
-            if (para.formatting.fontSizes.length === 0 || para.formatting.fontSizes.includes(0)) {
-                const textSnippet = para.text.substring(0, 80).trim();
-                issues.push({
-                    category: 'Formatting',
-                    severity: 'critical',
-                    rule: 'Font Size',
-                    message: `Paragraph ${idx + 1} has text without explicit font size. Must be ${expectedFontSize}pt`,
-                    expected: `${expectedFontSize}pt`,
-                    found: 'No explicit size',
-                    location: {
-                        paragraph: idx + 1,
-                        text: textSnippet + (para.text.length > 80 ? '...' : '')
-                    },
-                    fix: `Apply ${expectedFontSize}pt to all text`
-                });
-            } else {
-                const wrongSizes = para.formatting.fontSizes.filter(size =>
-                    size !== expectedFontSize && size !== 10 && size !== 0 // Allow 10pt for footnotes
-                );
-
+        // 3b. Font size check per paragraph
+        if (para.formatting.fontSizes && para.formatting.fontSizes.length > 0) {
+            if (isBlockQuote) {
+                // Block quotations must be 11pt (Section 2.5.4)
+                const wrongSizes = para.formatting.fontSizes.filter(s => s !== 11 && s > 0);
                 if (wrongSizes.length > 0) {
-                    const textSnippet = para.text.substring(0, 80).trim();
+                    issues.push({
+                        category: 'Formatting',
+                        severity: 'high',
+                        rule: 'Block Quotation Font Size (Section 2.5.4)',
+                        message: `Block quotation in Paragraph ${idx} must use 11pt font (found ${wrongSizes.join(', ')}pt).`,
+                        expected: '11pt',
+                        found: `${wrongSizes.join(', ')}pt`,
+                        location: {
+                            paragraph: idx,
+                            text: textSnippet
+                        },
+                        fix: 'Change block quotation font size to 11pt while keeping 1.5 line spacing'
+                    });
+                }
+            } else if (section === 'bibliography' || section === 'bibliographyHeader' || section === 'body' || section === 'cover') {
+                // Main text, cover page, and Bibliography must be 12pt (Sections 1.1.1 & 1.4)
+                const wrongSizes = para.formatting.fontSizes.filter(s => s !== expectedFontSize && s > 0);
+                if (wrongSizes.length > 0) {
                     issues.push({
                         category: 'Formatting',
                         severity: 'critical',
-                        rule: 'Font Size',
-                        message: `Paragraph ${idx + 1} uses incorrect font size: ${wrongSizes.join(', ')}pt. Must be ${expectedFontSize}pt`,
+                        rule: section === 'bibliography' ? 'Bibliography Font Size (Section 1.4)' : 'Font Size (Section 1.1.1)',
+                        message: `Paragraph ${idx} uses ${wrongSizes.join(', ')}pt font. ${section === 'bibliography' ? 'Bibliography' : 'Main text'} must be ${expectedFontSize}pt.`,
                         expected: `${expectedFontSize}pt`,
                         found: `${wrongSizes.join(', ')}pt`,
                         location: {
-                            paragraph: idx + 1,
-                            text: textSnippet + (para.text.length > 80 ? '...' : '')
+                            paragraph: idx,
+                            text: textSnippet
                         },
-                        fix: `Change text size to ${expectedFontSize}pt`
+                        fix: `Change font size to ${expectedFontSize}pt`
                     });
                 }
             }
-        } else if (para.formatting.fontSizes && isFootnoteOrBibliography) {
-            // For footnotes/bibliography, expect 10pt
-            const wrongSizes = para.formatting.fontSizes.filter(size =>
-                size !== 10 && size !== 0
-            );
+        }
 
-            if (wrongSizes.length > 0) {
-                const textSnippet = para.text.substring(0, 80).trim();
+        // 3c. Line spacing checks for Body and Bibliography (Sections 1.1.1 & 1.4)
+        const lineVal = para.formatting.spacing?.['w:line'];
+        if (lineVal) {
+            const spacing = Math.round((parseInt(lineVal, 10) / 240) * 100) / 100;
+            if (section === 'body' && Math.abs(spacing - expectedSpacing) > 0.15) {
                 issues.push({
                     category: 'Formatting',
                     severity: 'high',
-                    rule: 'Footnote/Bibliography Size',
-                    message: `Footnote/Bibliography uses incorrect font size: ${wrongSizes.join(', ')}pt. Must be 10pt`,
-                    expected: '10pt',
-                    found: `${wrongSizes.join(', ')}pt`,
+                    rule: 'Line Spacing (Section 1.1.1)',
+                    message: `Body paragraph ${idx} has ${spacing} line spacing instead of ${expectedSpacing}.`,
+                    expected: '1.5 line spacing',
+                    found: `${spacing} line spacing`,
                     location: {
-                        paragraph: idx + 1,
-                        text: textSnippet + (para.text.length > 80 ? '...' : '')
+                        paragraph: idx,
+                        text: textSnippet
                     },
-                    fix: 'Change footnote/bibliography text to 10pt'
+                    fix: 'Set paragraph line spacing to 1.5'
+                });
+            } else if (section === 'bibliography' && Math.abs(spacing - expectedSpacing) > 0.15 && !bibSpacingReported) {
+                bibSpacingReported = true;
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'high',
+                    rule: 'Bibliography Line Spacing (Section 1.4)',
+                    message: `Bibliography entries use ${spacing} line spacing. Section 1.4 requires 1.5 line spacing for the Bibliography.`,
+                    expected: '1.5 line spacing (12pt font)',
+                    found: `${spacing} line spacing`,
+                    location: {
+                        paragraph: idx,
+                        section: 'Bibliography',
+                        text: textSnippet
+                    },
+                    fix: 'Set Bibliography line spacing to 1.5'
                 });
             }
         }
 
-        // Check for paragraph indentation (should be flush left)
-        if (para.formatting.indentation?.['w:firstLine']) {
-            indentedParasCount++;
+        // 3d. Bibliography Hanging Indent check (Section 1.4)
+        if (section === 'bibliography' && /\d{4}/.test(textTrimmed)) {
+            const hasHanging = hangingIndent > 0;
+            if (!hasHanging && !bibHangingIndentReported) {
+                bibHangingIndentReported = true;
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'high',
+                    rule: 'Bibliography Hanging Indent (Section 1.4)',
+                    message: 'Bibliography entries must use a hanging indent (first line flush left, subsequent lines indented).',
+                    expected: 'Hanging indent (e.g., 0.5" hanging)',
+                    found: leftIndent > 0 ? 'Full block left indent (no hanging indent)' : 'No hanging indent',
+                    location: {
+                        paragraph: idx,
+                        section: 'Bibliography',
+                        text: textSnippet
+                    },
+                    fix: 'Format Bibliography paragraphs with a Hanging Indent (Paragraph → Indentation → Special: Hanging)'
+                });
+            }
+        }
 
-            if (indentedParasCount === 1) { // Report once
-                const textSnippet = para.text.substring(0, 80).trim();
+        // 3e. Body Paragraph First-Line Indentation check (Section 1.1.1)
+        if (section === 'body' && !isBlockQuote) {
+            const firstLineIndent = parseInt(para.formatting.indentation?.['w:firstLine'] || '0', 10);
+            if (firstLineIndent > 0 && !firstLineIndentReported) {
+                firstLineIndentReported = true;
                 issues.push({
                     category: 'Formatting',
                     severity: 'medium',
-                    rule: 'Paragraph Indentation',
-                    message: 'Paragraphs should be flush with left margin (no first-line indent)',
-                    expected: 'No indentation',
+                    rule: 'Paragraph Indentation (Section 1.1.1)',
+                    message: 'Body paragraphs must start flush with the left margin (no first-line indent) with a line space between paragraphs.',
+                    expected: 'Flush left (0" first-line indent)',
                     found: 'First-line indentation present',
                     location: {
-                        paragraph: idx + 1,
-                        text: textSnippet + (para.text.length > 80 ? '...' : '')
+                        paragraph: idx,
+                        text: textSnippet
                     },
-                    fix: 'Remove first-line indentation and add line space between paragraphs'
+                    fix: 'Remove first-line indentation and leave a line space between paragraphs'
                 });
             }
-        }
 
-        // Check alignment (should be left) - Skip cover page content
-        // Cover page typically contains: SAIACS header, title, submitted to, dates, declaration, signature
-        const isCoverPageContent =
-            para.text.toLowerCase().includes('south asia institute') ||
-            para.text.toLowerCase().includes('submitted to') ||
-            para.text.toLowerCase().includes('partial fulfillment') ||
-            para.text.toLowerCase().includes('due date') ||
-            para.text.toLowerCase().includes('expected time') ||
-            para.text.toLowerCase().includes('actual time') ||
-            para.text.toLowerCase().includes('expected word') ||
-            para.text.toLowerCase().includes('actual word') ||
-            para.text.toLowerCase().includes('academic honesty') ||
-            para.text.toLowerCase().includes('signature:') ||
-            para.text.toLowerCase().includes('admission no') ||
-            (idx < 30 && (para.text.trim().length < 100)); // Short lines in first 30 paragraphs are likely cover page
-
-        if (!isCoverPageContent && para.formatting.alignment && para.formatting.alignment !== 'left' && para.formatting.alignment !== 'start') {
-            const textSnippet = para.text.substring(0, 80).trim();
-            issues.push({
-                category: 'Formatting',
-                severity: 'low',
-                rule: 'Text Alignment',
-                message: `Text should be left-aligned (found ${para.formatting.alignment})`,
-                expected: 'Left alignment',
-                found: para.formatting.alignment,
-                location: {
-                    paragraph: idx + 1,
-                    text: textSnippet + (para.text.length > 80 ? '...' : '')
-                }
-            });
-        }
-    });
-
-    // 6. Validate Footnote Formatting
-    const footnotes = documentData.content.footnotes;
-
-    footnotes.forEach((footnote, idx) => {
-        if (footnote.text.length > 0) {
-            const textSnippet = footnote.text.substring(0, 100).trim();
-
-            // Check footnote font
-            if (footnote.formatting && footnote.formatting.fonts) {
-                const wrongFonts = footnote.formatting.fonts.filter(font =>
-                    font !== expectedFont && font !== 'Symbol'
-                );
-
-                if (wrongFonts.length > 0) {
-                    issues.push({
-                        category: 'Formatting',
-                        severity: 'high',
-                        rule: 'Footnote Font',
-                        message: `Footnote ${footnote.id} uses incorrect font: ${wrongFonts.join(', ')}. Must be "${expectedFont}"`,
-                        expected: expectedFont,
-                        found: wrongFonts.join(', '),
-                        location: {
-                            footnote: footnote.id,
-                            text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                        },
-                        fix: `Change footnote font to ${expectedFont}`
-                    });
-                }
-            }
-
-            // Check footnote size (should be 10pt)
-            if (footnote.formatting && footnote.formatting.fontSizes) {
-                const wrongSizes = footnote.formatting.fontSizes.filter(size =>
-                    size !== 10
-                );
-
-                if (wrongSizes.length > 0) {
-                    issues.push({
-                        category: 'Formatting',
-                        severity: 'high',
-                        rule: 'Footnote Size',
-                        message: `Footnote ${footnote.id} uses incorrect font size: ${wrongSizes.join(', ')}pt. Must be 10pt`,
-                        expected: '10pt',
-                        found: `${wrongSizes.join(', ')}pt`,
-                        location: {
-                            footnote: footnote.id,
-                            text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                        },
-                        fix: 'Change footnote size to 10pt'
-                    });
-                }
-            }
-
-            // Check footnote spacing (should be single spacing)
-            if (footnote.formatting && footnote.formatting.spacing) {
-                const lineSpacing = footnote.formatting.spacing['w:line'];
-                if (lineSpacing) {
-                    const spacing = parseInt(lineSpacing) / 240; // Convert to line spacing
-                    if (Math.abs(spacing - 1.0) > 0.1) { // Allow small tolerance
-                        issues.push({
-                            category: 'Formatting',
-                            severity: 'high',
-                            rule: 'Footnote Spacing',
-                            message: `Footnote ${footnote.id} must have single spacing (found ${spacing.toFixed(1)})`,
-                            expected: 'Single spacing (1.0)',
-                            found: `${spacing.toFixed(1)} spacing`,
-                            location: {
-                                footnote: footnote.id,
-                                text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                            },
-                            fix: 'Change footnote to single spacing'
-                        });
-                    }
-                }
-            }
-
-            // Check footnote alignment (should be left-aligned, flush with margin)
-            if (footnote.formatting) {
-                // Check for indentation (should be flush left)
-                if (footnote.formatting.indentation?.['w:firstLine'] ||
-                    footnote.formatting.indentation?.['w:left']) {
-                    issues.push({
-                        category: 'Formatting',
-                        severity: 'medium',
-                        rule: 'Footnote Alignment',
-                        message: `Footnote ${footnote.id} must be flush against left margin (no indentation)`,
-                        expected: 'Flush left, no indentation',
-                        found: 'Has indentation',
-                        location: {
-                            footnote: footnote.id,
-                            text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                        },
-                        fix: 'Remove footnote indentation'
-                    });
-                }
-
-                // Check text alignment (should be left)
-                if (footnote.formatting.alignment &&
-                    footnote.formatting.alignment !== 'left' &&
-                    footnote.formatting.alignment !== 'start') {
-                    issues.push({
-                        category: 'Formatting',
-                        severity: 'medium',
-                        rule: 'Footnote Alignment',
-                        message: `Footnote ${footnote.id} text must be left-aligned`,
-                        expected: 'Left alignment',
-                        found: footnote.formatting.alignment,
-                        location: {
-                            footnote: footnote.id,
-                            text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                        },
-                        fix: 'Change footnote to left alignment'
-                    });
-                }
-            }
-
-            // Check if footnote seems too long (might indicate wrong formatting)
-            if (footnote.text.length > 500) {
+            // Alignment check (must be left-aligned, not justified or centered)
+            if (
+                para.formatting.alignment &&
+                para.formatting.alignment !== 'left' &&
+                para.formatting.alignment !== 'start'
+            ) {
                 issues.push({
                     category: 'Formatting',
-                    severity: 'low',
-                    rule: 'Footnote Length',
-                    message: `Footnote ${footnote.id} is very long. Check formatting.`,
-                    expected: 'Concise footnote',
-                    found: `${footnote.text.length} characters`,
+                    severity: 'medium',
+                    rule: 'Text Alignment (Section 1.1.1)',
+                    message: `Paragraph ${idx} is "${para.formatting.alignment}"-aligned. Main text must be left-aligned (ragged right, not justified or centered).`,
+                    expected: 'Left alignment',
+                    found: para.formatting.alignment === 'both' ? 'Justified (both)' : para.formatting.alignment,
                     location: {
-                        footnote: footnote.id,
-                        text: textSnippet + (footnote.text.length > 100 ? '...' : '')
-                    }
+                        paragraph: idx,
+                        text: textSnippet
+                    },
+                    fix: 'Align body text to the left margin'
+                });
+            }
+        }
+
+        // 3f. Dashes and Hyphens Spacing Check (Section 2.8)
+        if (section === 'body') {
+            // Spaced en-dash, em-dash, or hyphen between words (e.g., "Hebrews – the" or "word — word" or "word - word")
+            const spacedDashMatch = para.text.match(/\b\w+\s+[–—-]\s+\w+\b/);
+            if (spacedDashMatch) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'medium',
+                    rule: 'Dashes and Hyphens (Section 2.8)',
+                    message: `Do not put spaces around dashes or hyphens (found "${spacedDashMatch[0]}"). Use an unspaced em-dash (—) for dashes or unspaced hyphen (-) for compound words.`,
+                    expected: spacedDashMatch[0].replace(/\s+[–—-]\s+/, '—'),
+                    found: spacedDashMatch[0],
+                    location: {
+                        paragraph: idx,
+                        text: textSnippet
+                    },
+                    fix: 'Remove spaces on both sides of the dash and use an em-dash (—)'
                 });
             }
         }
     });
 
-    // 7. Check for page numbering
-    if (!documentData.formatting.pageNumbers.present && documentData.structure.pageCount > 1) {
-        issues.push({
-            category: 'Formatting',
-            severity: 'medium',
-            rule: 'Page Numbering',
-            message: 'Page numbers should be at bottom center',
-            expected: 'Page numbers at bottom center',
-            found: 'No page numbers detected',
-            location: { section: 'Page Setup' },
-            fix: 'Add page numbers at bottom center'
-        });
+    // 4. Validate Footnote Formatting (Section 1.3)
+    const footnotes = documentData.content.footnotes;
+    footnotes.forEach(footnote => {
+        if (!footnote.text || footnote.text.trim().length === 0) return;
+
+        const textSnippet = footnote.text.substring(0, 100).trim() + (footnote.text.length > 100 ? '...' : '');
+
+        // 4a. Footnote font family
+        if (footnote.formatting?.fonts?.length > 0) {
+            const wrongFonts = footnote.formatting.fonts.filter(font =>
+                font !== expectedFont && font !== 'Symbol' && font !== '_inherit_'
+            );
+            if (wrongFonts.length > 0) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'high',
+                    rule: 'Footnote Font (Section 1.3)',
+                    message: `Footnote ${footnote.id} uses incorrect font: ${wrongFonts.join(', ')}. Must be "${expectedFont}".`,
+                    expected: expectedFont,
+                    found: wrongFonts.join(', '),
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: `Change Footnote ${footnote.id} font to ${expectedFont}`
+                });
+            }
+        }
+
+        // 4b. Footnote font size (must be 10pt)
+        if (footnote.formatting?.fontSizes?.length > 0) {
+            const wrongSizes = footnote.formatting.fontSizes.filter(size => size !== 10 && size > 0);
+            if (wrongSizes.length > 0) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'high',
+                    rule: 'Footnote Font Size (Section 1.3)',
+                    message: `Footnote ${footnote.id} uses ${wrongSizes.join(', ')}pt font. Footnotes must be 10pt.`,
+                    expected: '10pt',
+                    found: `${wrongSizes.join(', ')}pt`,
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: `Change Footnote ${footnote.id} font size to 10pt`
+                });
+            }
+        }
+
+        // 4c. Footnote spacing (must be single spacing 1.0)
+        if (footnote.formatting?.spacing?.['w:line']) {
+            const spacing = parseInt(footnote.formatting.spacing['w:line'], 10) / 240;
+            if (Math.abs(spacing - 1.0) > 0.1) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'high',
+                    rule: 'Footnote Spacing (Section 1.3)',
+                    message: `Footnote ${footnote.id} must be single-spaced (found ${spacing.toFixed(1)}).`,
+                    expected: 'Single spacing (1.0)',
+                    found: `${spacing.toFixed(1)} spacing`,
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: 'Set footnote line spacing to single (1.0) with no space between entries'
+                });
+            }
+        }
+
+        // 4d. Footnote indentation & alignment (must be flush left, left-aligned)
+        if (footnote.formatting) {
+            const firstLine = parseInt(footnote.formatting.indentation?.['w:firstLine'] || '0', 10);
+            const left = parseInt(footnote.formatting.indentation?.['w:left'] || '0', 10);
+            if (firstLine > 0 || left > 0) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'medium',
+                    rule: 'Footnote Indentation (Section 1.3)',
+                    message: `Footnote ${footnote.id} must be flush against the left margin (no indentation).`,
+                    expected: 'Flush left (0" indent)',
+                    found: 'Indented footnote',
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: 'Remove indentation from footnotes'
+                });
+            }
+
+            if (
+                footnote.formatting.alignment &&
+                footnote.formatting.alignment !== 'left' &&
+                footnote.formatting.alignment !== 'start'
+            ) {
+                issues.push({
+                    category: 'Formatting',
+                    severity: 'medium',
+                    rule: 'Footnote Alignment (Section 1.3)',
+                    message: `Footnote ${footnote.id} must be left-aligned (found ${footnote.formatting.alignment}).`,
+                    expected: 'Left alignment',
+                    found: footnote.formatting.alignment,
+                    location: {
+                        footnote: footnote.id,
+                        text: textSnippet
+                    },
+                    fix: 'Set footnote text alignment to left'
+                });
+            }
+        }
+    });
+
+    // 5. Validate Page Numbering (Section 1.1.1 & Appendix 1)
+    const pageNums = documentData.formatting.pageNumbers;
+    if (documentData.structure.pageCount > 1) {
+        if (!pageNums.present) {
+            issues.push({
+                category: 'Formatting',
+                severity: 'medium',
+                rule: 'Pagination (Section 1.1.1)',
+                message: 'Page numbers must be placed at the bottom centre of the page (none detected in footer).',
+                expected: 'Page numbers at bottom centre (hidden on cover page)',
+                found: 'No page numbers detected',
+                location: { section: 'Page Setup / Footer' },
+                fix: 'Insert page numbers at the bottom centre (Footer) and enable "Different First Page" to hide on cover page'
+            });
+        } else if (!pageNums.inFooter || pageNums.alignment !== 'center') {
+            issues.push({
+                category: 'Formatting',
+                severity: 'medium',
+                rule: 'Pagination Placement (Section 1.1.1)',
+                message: `Page numbers must be placed at the bottom centre (found in ${pageNums.location}).`,
+                expected: 'footer (center)',
+                found: pageNums.location || 'non-centered page number',
+                location: { section: 'Page Setup / Footer' },
+                fix: 'Move page numbers to the bottom centre of the footer'
+            });
+        }
     }
 
     return issues;
