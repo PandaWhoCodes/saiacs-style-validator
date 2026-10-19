@@ -1,5 +1,16 @@
 let currentResults = null;
 let currentFilter = 'all';
+let currentCategory = 'all';
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // File input handling
 const fileInput = document.getElementById('fileInput');
@@ -78,7 +89,6 @@ uploadForm.addEventListener('submit', async (e) => {
     } catch (error) {
         showError('Error connecting to server: ' + error.message);
     } finally {
-        // Reset button
         btnText.style.display = 'inline';
         btnSpinner.style.display = 'none';
         validateBtn.disabled = false;
@@ -89,15 +99,13 @@ uploadForm.addEventListener('submit', async (e) => {
 function displayResults(results, filename) {
     const resultsSection = document.getElementById('resultsSection');
     const summaryDiv = document.getElementById('summary');
-    const issuesList = document.getElementById('issuesList');
 
     resultsSection.style.display = 'block';
     resultsSection.scrollIntoView({ behavior: 'smooth' });
 
-    // Display summary
     const summary = results.summary;
     summaryDiv.innerHTML = `
-        <h3>📄 ${filename}</h3>
+        <h3>📄 ${escapeHtml(filename)}</h3>
         <p>Document Type: <strong>${results.documentType === 'dissertation' ? 'Dissertation' : 'Assignment'}</strong></p>
         <div class="summary-stats">
             <div class="stat-box">
@@ -124,23 +132,32 @@ function displayResults(results, filename) {
         ${summary.totalIssues === 0 ? '<div class="success-message"><strong>✓ Excellent!</strong> No issues found. Your document follows the SAIACS Style Guide.</div>' : ''}
     `;
 
-    // Display issues
     displayIssues(results.issues);
 
-    // Setup filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    // Setup severity filter buttons
+    document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFilter = btn.dataset.filter;
             displayIssues(results.issues);
-        });
+        };
+    });
+
+    // Setup category filter buttons
+    document.querySelectorAll('.cat-filter-btn[data-category]').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.cat-filter-btn[data-category]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentCategory = btn.dataset.category;
+            displayIssues(results.issues);
+        };
     });
 
     // Setup download button
-    document.getElementById('downloadReport').addEventListener('click', () => {
+    document.getElementById('downloadReport').onclick = () => {
         downloadReport(results, filename);
-    });
+    };
 }
 
 function displayIssues(issues) {
@@ -148,69 +165,81 @@ function displayIssues(issues) {
 
     let filteredIssues = issues;
     if (currentFilter !== 'all') {
-        filteredIssues = issues.filter(issue => issue.severity === currentFilter);
+        filteredIssues = filteredIssues.filter(issue => issue.severity === currentFilter);
+    }
+    if (currentCategory !== 'all') {
+        filteredIssues = filteredIssues.filter(issue => issue.category === currentCategory);
     }
 
     if (filteredIssues.length === 0) {
-        issuesList.innerHTML = '<div class="success-message">No issues in this category!</div>';
+        issuesList.innerHTML = '<div class="success-message">No issues in this filter!</div>';
         return;
     }
 
     issuesList.innerHTML = filteredIssues.map(issue => `
-        <div class="issue-card ${issue.severity}">
+        <div class="issue-card ${escapeHtml(issue.severity)}">
             <div class="issue-header">
-                <div class="issue-title">${issue.category}: ${issue.rule}</div>
-                <span class="severity-badge ${issue.severity}">${issue.severity}</span>
+                <div class="issue-title">${escapeHtml(issue.category)}: ${escapeHtml(issue.rule)}</div>
+                <span class="severity-badge ${escapeHtml(issue.severity)}">${escapeHtml(issue.severity)}</span>
             </div>
-            <div class="issue-message">${issue.message}</div>
+            <div class="issue-message">${escapeHtml(issue.message)}</div>
             <div class="issue-details">
                 ${issue.expected ? `
                     <div class="detail-item">
                         <div class="detail-label">Expected:</div>
-                        <div class="detail-value">${issue.expected}</div>
+                        <div class="detail-value">${escapeHtml(issue.expected)}</div>
                     </div>
                 ` : ''}
                 ${issue.found ? `
                     <div class="detail-item">
                         <div class="detail-label">Found:</div>
-                        <div class="detail-value">${issue.found}</div>
+                        <div class="detail-value">${escapeHtml(issue.found)}</div>
                     </div>
                 ` : ''}
                 ${issue.location ? `
                     <div class="detail-item">
                         <div class="detail-label">Location:</div>
-                        <div class="detail-value">${formatLocation(issue.location)}</div>
+                        <div class="detail-value">${formatLocationHtml(issue.location)}</div>
                     </div>
                 ` : ''}
             </div>
             ${issue.fix ? `
                 <div class="issue-fix">
                     <div class="fix-label">💡 How to fix:</div>
-                    <div class="fix-text">${issue.fix}</div>
+                    <div class="fix-text">${escapeHtml(issue.fix)}</div>
                 </div>
             ` : ''}
         </div>
     `).join('');
 }
 
-function formatLocation(location) {
-    let result = [];
-
+function formatLocationHtml(location) {
+    const parts = [];
     if (location.paragraph) {
-        result.push(`Para ${location.paragraph}`);
+        parts.push(`Para ${escapeHtml(location.paragraph)}`);
     }
     if (location.footnote) {
-        result.push(`Footnote ${location.footnote}`);
+        parts.push(`Footnote ${escapeHtml(location.footnote)}`);
     }
     if (location.section) {
-        result.push(location.section);
-    }
-    if (location.text) {
-        // Show text snippet prominently
-        return `<div style="margin-top: 5px; padding: 8px; background: #f8f9fa; border-left: 3px solid #666; font-family: 'Courier New', monospace; font-size: 0.85em;">"${location.text}"</div>`;
+        parts.push(escapeHtml(location.section));
     }
 
-    return result.length > 0 ? result.join(' • ') : 'See document';
+    const header = parts.length > 0 ? `<strong>${parts.join(' • ')}</strong>` : '';
+    const snippet = location.text
+        ? `<div style="margin-top: 5px; padding: 8px; background: #f8f9fa; border-left: 3px solid #666; font-family: 'Courier New', monospace; font-size: 0.85em;">"${escapeHtml(location.text)}"</div>`
+        : '';
+
+    return (header + snippet) || 'See document';
+}
+
+function formatLocationText(location) {
+    const parts = [];
+    if (location.paragraph) parts.push(`Para ${location.paragraph}`);
+    if (location.footnote) parts.push(`Footnote ${location.footnote}`);
+    if (location.section) parts.push(location.section);
+    if (location.text) parts.push(`"${location.text}"`);
+    return parts.length > 0 ? parts.join(' • ') : 'See document';
 }
 
 function showError(message) {
@@ -221,7 +250,7 @@ function showError(message) {
     resultsSection.style.display = 'block';
     resultsSection.scrollIntoView({ behavior: 'smooth' });
 
-    summaryDiv.innerHTML = `<div class="error-message"><strong>❌ Error:</strong> ${message}</div>`;
+    summaryDiv.innerHTML = `<div class="error-message"><strong>❌ Error:</strong> ${escapeHtml(message)}</div>`;
     issuesList.innerHTML = '';
 }
 
@@ -231,7 +260,7 @@ function downloadReport(results, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SAIACS_Validation_Report_${filename.replace('.docx', '')}.txt`;
+    a.download = `SAIACS_Validation_Report_${filename.replace(/\.docx$/i, '')}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -269,7 +298,7 @@ function generateTextReport(results, filename) {
             report += `   ${issue.message}\n`;
             if (issue.expected) report += `   Expected: ${issue.expected}\n`;
             if (issue.found) report += `   Found: ${issue.found}\n`;
-            if (issue.location) report += `   Location: ${formatLocation(issue.location)}\n`;
+            if (issue.location) report += `   Location: ${formatLocationText(issue.location)}\n`;
             if (issue.fix) report += `   Fix: ${issue.fix}\n`;
             report += '\n';
         });
