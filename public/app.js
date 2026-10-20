@@ -1,6 +1,8 @@
 let currentResults = null;
+let currentFilename = '';
 let currentFilter = 'all';
 let currentCategory = 'all';
+let dismissedIssueIds = [];
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
@@ -80,7 +82,13 @@ uploadForm.addEventListener('submit', async (e) => {
         const data = await response.json();
 
         if (data.success) {
+            // Assign stable index IDs to each issue so they can be dismissed/restored
+            data.results.issues.forEach((issue, idx) => {
+                issue._id = idx;
+            });
             currentResults = data.results;
+            currentFilename = data.filename;
+            dismissedIssueIds = [];
             displayResults(data.results, data.filename);
         } else {
             showError(data.error || 'Validation failed');
@@ -95,22 +103,45 @@ uploadForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Display results
-function displayResults(results, filename) {
-    const resultsSection = document.getElementById('resultsSection');
+function getActiveIssues(issues) {
+    const dismissedSet = new Set(dismissedIssueIds);
+    return (issues || []).filter(issue => !dismissedSet.has(issue._id));
+}
+
+function computeSummary(issues) {
+    const active = getActiveIssues(issues);
+    return {
+        totalIssues: active.length,
+        critical: active.filter(i => i.severity === 'critical').length,
+        high: active.filter(i => i.severity === 'high').length,
+        medium: active.filter(i => i.severity === 'medium').length,
+        low: active.filter(i => i.severity === 'low').length,
+        dismissed: dismissedIssueIds.length
+    };
+}
+
+function renderSummary(results, filename) {
     const summaryDiv = document.getElementById('summary');
+    const summary = computeSummary(results.issues);
 
-    resultsSection.style.display = 'block';
-    resultsSection.scrollIntoView({ behavior: 'smooth' });
-
-    const summary = results.summary;
     summaryDiv.innerHTML = `
-        <h3>📄 ${escapeHtml(filename)}</h3>
-        <p>Document Type: <strong>${results.documentType === 'dissertation' ? 'Dissertation' : 'Assignment'}</strong></p>
+        <div class="summary-top-row">
+            <div>
+                <h3>📄 ${escapeHtml(filename)}</h3>
+                <p>Document Type: <strong>${results.documentType === 'dissertation' ? 'Dissertation' : 'Assignment'}</strong></p>
+            </div>
+            ${summary.dismissed > 0 ? `
+                <div class="dismissed-bar">
+                    <span class="dismissed-count">✓ ${summary.dismissed} marked as done</span>
+                    <button type="button" class="btn-link" id="undoDismissBtn" title="Restore the last dismissed issue">Undo last</button>
+                    <button type="button" class="btn-link" id="restoreAllBtn" title="Show all dismissed issues again">Restore all</button>
+                </div>
+            ` : ''}
+        </div>
         <div class="summary-stats">
             <div class="stat-box">
                 <div class="stat-number">${summary.totalIssues}</div>
-                <div class="stat-label">Total Issues</div>
+                <div class="stat-label">Remaining Issues</div>
             </div>
             <div class="stat-box critical">
                 <div class="stat-number">${summary.critical}</div>
@@ -129,9 +160,52 @@ function displayResults(results, filename) {
                 <div class="stat-label">Low</div>
             </div>
         </div>
-        ${summary.totalIssues === 0 ? '<div class="success-message"><strong>✓ Excellent!</strong> No issues found. Your document follows the SAIACS Style Guide.</div>' : ''}
+        ${summary.totalIssues === 0 ? `<div class="success-message"><strong>✓ ${summary.dismissed > 0 ? 'All issues resolved!' : 'Excellent!'}</strong> ${summary.dismissed > 0 ? `You have completed all ${summary.dismissed} issue(s).` : 'No issues found. Your document follows the SAIACS Style Guide.'}</div>` : ''}
     `;
 
+    const undoBtn = document.getElementById('undoDismissBtn');
+    if (undoBtn) {
+        undoBtn.onclick = () => {
+            dismissedIssueIds.pop();
+            renderSummary(currentResults, currentFilename);
+            displayIssues(currentResults.issues);
+        };
+    }
+
+    const restoreAllBtn = document.getElementById('restoreAllBtn');
+    if (restoreAllBtn) {
+        restoreAllBtn.onclick = () => {
+            dismissedIssueIds = [];
+            renderSummary(currentResults, currentFilename);
+            displayIssues(currentResults.issues);
+        };
+    }
+}
+
+function dismissIssue(issueId, cardEl) {
+    if (!dismissedIssueIds.includes(issueId)) {
+        dismissedIssueIds.push(issueId);
+    }
+    if (cardEl) {
+        cardEl.classList.add('dismissing');
+        setTimeout(() => {
+            renderSummary(currentResults, currentFilename);
+            displayIssues(currentResults.issues);
+        }, 180);
+    } else {
+        renderSummary(currentResults, currentFilename);
+        displayIssues(currentResults.issues);
+    }
+}
+
+// Display results
+function displayResults(results, filename) {
+    const resultsSection = document.getElementById('resultsSection');
+
+    resultsSection.style.display = 'block';
+    resultsSection.scrollIntoView({ behavior: 'smooth' });
+
+    renderSummary(results, filename);
     displayIssues(results.issues);
 
     // Setup severity filter buttons
@@ -163,7 +237,7 @@ function displayResults(results, filename) {
 function displayIssues(issues) {
     const issuesList = document.getElementById('issuesList');
 
-    let filteredIssues = issues;
+    let filteredIssues = getActiveIssues(issues);
     if (currentFilter !== 'all') {
         filteredIssues = filteredIssues.filter(issue => issue.severity === currentFilter);
     }
@@ -172,15 +246,18 @@ function displayIssues(issues) {
     }
 
     if (filteredIssues.length === 0) {
-        issuesList.innerHTML = '<div class="success-message">No issues in this filter!</div>';
+        issuesList.innerHTML = '<div class="success-message">No remaining issues in this filter!</div>';
         return;
     }
 
     issuesList.innerHTML = filteredIssues.map(issue => `
-        <div class="issue-card ${escapeHtml(issue.severity)}">
+        <div class="issue-card ${escapeHtml(issue.severity)}" data-issue-id="${issue._id}">
             <div class="issue-header">
                 <div class="issue-title">${escapeHtml(issue.category)}: ${escapeHtml(issue.rule)}</div>
-                <span class="severity-badge ${escapeHtml(issue.severity)}">${escapeHtml(issue.severity)}</span>
+                <div class="issue-actions">
+                    <span class="severity-badge ${escapeHtml(issue.severity)}">${escapeHtml(issue.severity)}</span>
+                    <button type="button" class="issue-dismiss-btn" data-dismiss-id="${issue._id}" title="Mark as done / Remove issue" aria-label="Mark as done">✕</button>
+                </div>
             </div>
             <div class="issue-message">${escapeHtml(issue.message)}</div>
             <div class="issue-details">
@@ -211,6 +288,14 @@ function displayIssues(issues) {
             ` : ''}
         </div>
     `).join('');
+
+    issuesList.querySelectorAll('.issue-dismiss-btn').forEach(btn => {
+        btn.onclick = () => {
+            const id = parseInt(btn.getAttribute('data-dismiss-id'), 10);
+            const card = btn.closest('.issue-card');
+            dismissIssue(id, card);
+        };
+    });
 }
 
 function formatLocationHtml(location) {
@@ -268,6 +353,8 @@ function downloadReport(results, filename) {
 }
 
 function generateTextReport(results, filename) {
+    const activeIssues = getActiveIssues(results.issues);
+    const summary = computeSummary(results.issues);
     let report = '';
     report += '═══════════════════════════════════════════════════════════════\n';
     report += '   SAIACS STYLE GUIDE VALIDATION REPORT\n';
@@ -279,21 +366,21 @@ function generateTextReport(results, filename) {
     report += '───────────────────────────────────────────────────────────────\n';
     report += 'SUMMARY\n';
     report += '───────────────────────────────────────────────────────────────\n\n';
-    report += `Total Issues: ${results.summary.totalIssues}\n`;
-    report += `  Critical: ${results.summary.critical}\n`;
-    report += `  High:     ${results.summary.high}\n`;
-    report += `  Medium:   ${results.summary.medium}\n`;
-    report += `  Low:      ${results.summary.low}\n\n`;
+    report += `Remaining Issues: ${summary.totalIssues}${summary.dismissed > 0 ? ` (${summary.dismissed} marked as done)` : ''}\n`;
+    report += `  Critical: ${summary.critical}\n`;
+    report += `  High:     ${summary.high}\n`;
+    report += `  Medium:   ${summary.medium}\n`;
+    report += `  Low:      ${summary.low}\n\n`;
 
-    if (results.summary.totalIssues === 0) {
-        report += '✓ Excellent! No issues found.\n';
+    if (activeIssues.length === 0) {
+        report += '✓ Excellent! No remaining issues.\n';
         report += 'Your document follows the SAIACS Style Guide.\n\n';
     } else {
         report += '───────────────────────────────────────────────────────────────\n';
         report += 'ISSUES FOUND\n';
         report += '───────────────────────────────────────────────────────────────\n\n';
 
-        results.issues.forEach((issue, index) => {
+        activeIssues.forEach((issue, index) => {
             report += `${index + 1}. [${issue.severity.toUpperCase()}] ${issue.category}: ${issue.rule}\n`;
             report += `   ${issue.message}\n`;
             if (issue.expected) report += `   Expected: ${issue.expected}\n`;

@@ -312,11 +312,17 @@ input[type="file"] {
     border-radius: 8px;
     border-left: 5px solid;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transition: transform 0.2s;
+    transition: transform 0.2s, opacity 0.18s ease;
 }
 
 .issue-card:hover {
     transform: translateX(5px);
+}
+
+.issue-card.dismissing {
+    opacity: 0;
+    transform: translateX(25px);
+    pointer-events: none;
 }
 
 .issue-card.critical {
@@ -338,7 +344,8 @@ input[type="file"] {
 .issue-header {
     display: flex;
     justify-content: space-between;
-    align-items: start;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 10px;
 }
 
@@ -346,6 +353,76 @@ input[type="file"] {
     font-weight: 700;
     font-size: 1.1rem;
     color: var(--primary-color);
+}
+
+.issue-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.issue-dismiss-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: #f8f9fa;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.issue-dismiss-btn:hover {
+    background: var(--success-color);
+    border-color: var(--success-color);
+    color: #ffffff;
+    transform: scale(1.08);
+}
+
+.summary-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.dismissed-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+}
+
+.dismissed-count {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--secondary-color);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0 2px;
+}
+
+.btn-link:hover {
+    color: #1d6fa5;
 }
 
 .severity-badge {
